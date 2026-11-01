@@ -1,22 +1,17 @@
+
 using LeaveManagement.Api.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace LeaveManagement.Tests;
 
-// The tests run against a real, throwaway PostgreSQL started by Testcontainers,
-// which needs Docker on the machine.
-//
-// No Docker? Set the environment variable Database__Provider=Sqlite and the very
-// same tests run against an in-memory SQLite instead:
-//
-//     Database__Provider=Sqlite dotnet test          (bash)
-//     $env:Database__Provider="Sqlite"; dotnet test  (PowerShell)
 public sealed class TestDatabase : IAsyncLifetime
 {
     private readonly List<SqliteConnection> _sqliteConnections = new();
+    private readonly List<string> _databaseNames = new();
     private PostgreSqlContainer? _postgres;
 
     public static bool UseSqlite => string.Equals(
@@ -32,14 +27,12 @@ public sealed class TestDatabase : IAsyncLifetime
         await _postgres.StartAsync();
     }
 
-    // Gives each test its own empty database.
     public LeaveDbContext NewDb()
     {
         var options = new DbContextOptionsBuilder<LeaveDbContext>();
 
         if (UseSqlite)
         {
-            // The in-memory database lives as long as its connection, so keep it open.
             var connection = new SqliteConnection("DataSource=:memory:");
             connection.Open();
             _sqliteConnections.Add(connection);
@@ -47,18 +40,73 @@ public sealed class TestDatabase : IAsyncLifetime
         }
         else
         {
-            options.UseNpgsql(_postgres!.GetConnectionString());
+            var databaseName = $"leave_test_{Guid.NewGuid():N}";
+
+            var adminBuilder =
+                new NpgsqlConnectionStringBuilder(_postgres!.GetConnectionString())
+                {
+                    Database = "postgres"
+                };
+
+            using (var connection = new NpgsqlConnection(adminBuilder.ConnectionString))
+            {
+                connection.Open();
+
+                using var command = new NpgsqlCommand(
+                    $"CREATE DATABASE \"{databaseName}\"",
+                    connection);
+
+                command.ExecuteNonQuery();
+            }
+
+            _databaseNames.Add(databaseName);
+
+            var testBuilder =
+                new NpgsqlConnectionStringBuilder(_postgres.GetConnectionString())
+                {
+                    Database = databaseName
+                };
+
+            options.UseNpgsql(testBuilder.ConnectionString);
         }
 
         var db = new LeaveDbContext(options.Options);
-        if (!UseSqlite) db.Database.EnsureDeleted();
         db.Database.EnsureCreated();
+
         return db;
     }
 
     public async Task DisposeAsync()
     {
-        foreach (var connection in _sqliteConnections) connection.Dispose();
-        if (_postgres is not null) await _postgres.DisposeAsync();
+        foreach (var connection in _sqliteConnections)
+            connection.Dispose();
+
+        if (_postgres is not null)
+        {
+            // Close pooled connections before dropping test databases.
+            NpgsqlConnection.ClearAllPools();
+
+            var adminBuilder =
+                new NpgsqlConnectionStringBuilder(_postgres.GetConnectionString())
+                {
+                    Database = "postgres"
+                };
+
+            await using var connection =
+                new NpgsqlConnection(adminBuilder.ConnectionString);
+
+            await connection.OpenAsync();
+
+            foreach (var databaseName in _databaseNames)
+            {
+                await using var command = new NpgsqlCommand(
+                    $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)",
+                    connection);
+
+                await command.ExecuteNonQueryAsync();
+            }
+
+            await _postgres.DisposeAsync();
+        }
     }
 }

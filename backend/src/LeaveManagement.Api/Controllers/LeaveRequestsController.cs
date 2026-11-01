@@ -63,7 +63,7 @@ public class LeaveRequestsController : ControllerBase
             .Sum(r => r.Days);
 
         // Make sure the request does not exceed the quota.
-        if (dto.Type == LeaveType.Vacation && days > employee.AnnualQuota)
+        if (dto.Type == LeaveType.Vacation && days > employee.AnnualQuota - used)
         {
             return BadRequest("Not enough vacation balance");
         }

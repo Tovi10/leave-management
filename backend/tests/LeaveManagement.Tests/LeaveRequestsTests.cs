@@ -1,3 +1,4 @@
+using LeaveManagement.Api.Data;
 using LeaveManagement.Api.Controllers;
 using LeaveManagement.Api.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -15,17 +16,15 @@ public class LeaveRequestsTests : IClassFixture<TestDatabase>
     }
 
     [Fact]
-    public void Create_WithinQuota_Succeeds()
+    public void Create_WithinAvailableBalance_Succeeds()
     {
         // Arrange
         using var db = _database.NewDb();
-        var emp = new Employee { Name = "Test Emp", AnnualQuota = 20 };
-        db.Employees.Add(emp);
-        db.SaveChanges();
+        var emp = CreateEmployeeWithApprovedVacation(db, 15);
 
         var controller = new LeaveRequestsController(db);
 
-        // Act: request 3 days, well within the quota.
+        // Act: request 3 days with 5 days remaining.
         var result = controller.Create(new CreateLeaveRequestDto
         {
             EmployeeId = emp.Id,
@@ -36,10 +35,66 @@ public class LeaveRequestsTests : IClassFixture<TestDatabase>
 
         // Assert
         Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(2, db.LeaveRequests.Count());
+    }
+
+    [Fact]
+    public void Create_ExactlyRemainingBalance_Succeeds()
+    {
+        using var db = _database.NewDb();
+        var emp = CreateEmployeeWithApprovedVacation(db, 17);
+        var controller = new LeaveRequestsController(db);
+
+        var result = controller.Create(new CreateLeaveRequestDto
+        {
+            EmployeeId = emp.Id,
+            Type = LeaveType.Vacation,
+            StartDate = new DateTime(2026, 3, 1),
+            EndDate = new DateTime(2026, 3, 3)
+        });
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(2, db.LeaveRequests.Count());
+    }
+
+    [Fact]
+    public void Create_ExceedingAvailableBalance_ReturnsBadRequest()
+    {
+        using var db = _database.NewDb();
+        var emp = CreateEmployeeWithApprovedVacation(db, 18);
+        var controller = new LeaveRequestsController(db);
+
+        var result = controller.Create(new CreateLeaveRequestDto
+        {
+            EmployeeId = emp.Id,
+            Type = LeaveType.Vacation,
+            StartDate = new DateTime(2026, 3, 1),
+            EndDate = new DateTime(2026, 3, 3)
+        });
+
+        Assert.IsType<BadRequestObjectResult>(result);
         Assert.Single(db.LeaveRequests);
     }
 
-    // TODO (candidate): add a test that proves the balance bug is fixed —
-    // an employee who has already used most of the quota should NOT be able
-    // to create a request that pushes them over the annual quota.
+    private static Employee CreateEmployeeWithApprovedVacation(
+        LeaveDbContext db,
+        int usedDays)
+    {
+        var employee = new Employee { Name = "Test Emp", AnnualQuota = 20 };
+        db.Employees.Add(employee);
+        db.SaveChanges();
+
+        db.LeaveRequests.Add(new LeaveRequest
+        {
+            EmployeeId = employee.Id,
+            Type = LeaveType.Vacation,
+            StartDate = new DateTime(2026, 1, 1),
+            EndDate = new DateTime(2026, 1, usedDays),
+            Days = usedDays,
+            Status = LeaveStatus.Approved
+        });
+        db.SaveChanges();
+
+        return employee;
+    }
 }
