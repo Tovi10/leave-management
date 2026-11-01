@@ -1,0 +1,22 @@
+form {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.validation-message {
+  color: #b42318;
+}
+
+button {
+  background: #2680c2;
+  color: #fff;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 4px;
+}
+
+button:hover {
+  background: #186faf;
+}

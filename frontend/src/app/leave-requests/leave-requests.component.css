@@ -1,11 +1,48 @@
-button {
+.approve-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 88px;
   background: #2680c2;
   color: #fff;
   border: none;
-  padding: 4px 12px;
+  padding: 7px 12px;
   border-radius: 4px;
 }
 
-button:hover {
+.approve-button:hover:not(:disabled) {
   background: #186faf;
+}
+
+.approve-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.loading-indicator {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+}
+
+.approval-feedback {
+  max-width: 280px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.approval-feedback.success {
+  color: #176b3a;
+  background: #eaf6ee;
+}
+
+.approval-feedback.error {
+  color: #a4262c;
+  background: #fdf0ef;
 }

@@ -79,6 +79,95 @@ public class LeaveRequestsTests : IClassFixture<TestDatabase>
     }
 
     [Fact]
+    public void Create_StartDateAfterEndDate_ReturnsBadRequest()
+    {
+        using var db = _database.NewDb();
+        var employee = new Employee { Name = "Test Employee", AnnualQuota = 20 };
+        db.Employees.Add(employee);
+        db.SaveChanges();
+        var controller = new LeaveRequestsController(db);
+
+        var result = controller.Create(new CreateLeaveRequestDto
+        {
+            EmployeeId = employee.Id,
+            Type = LeaveType.Vacation,
+            StartDate = new DateTime(2026, 3, 3),
+            EndDate = new DateTime(2026, 3, 1)
+        });
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("End date must be on or after start date.", problem.Errors[nameof(CreateLeaveRequestDto.EndDate)]);
+        Assert.Empty(db.LeaveRequests);
+    }
+
+    [Fact]
+    public void Create_MissingLeaveType_ReturnsBadRequest()
+    {
+        using var db = _database.NewDb();
+        var employee = new Employee { Name = "Test Employee", AnnualQuota = 20 };
+        db.Employees.Add(employee);
+        db.SaveChanges();
+        var controller = new LeaveRequestsController(db);
+
+        var result = controller.Create(new CreateLeaveRequestDto
+        {
+            EmployeeId = employee.Id,
+            StartDate = new DateTime(2026, 3, 1),
+            EndDate = new DateTime(2026, 3, 1)
+        });
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("Leave type is required.", problem.Errors[nameof(CreateLeaveRequestDto.Type)]);
+        Assert.Empty(db.LeaveRequests);
+    }
+
+    [Fact]
+    public void Create_InvalidLeaveType_ReturnsBadRequest()
+    {
+        using var db = _database.NewDb();
+        var employee = new Employee { Name = "Test Employee", AnnualQuota = 20 };
+        db.Employees.Add(employee);
+        db.SaveChanges();
+        var controller = new LeaveRequestsController(db);
+
+        var result = controller.Create(new CreateLeaveRequestDto
+        {
+            EmployeeId = employee.Id,
+            Type = (LeaveType)99,
+            StartDate = new DateTime(2026, 3, 1),
+            EndDate = new DateTime(2026, 3, 1)
+        });
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("Select a valid leave type.", problem.Errors[nameof(CreateLeaveRequestDto.Type)]);
+        Assert.Empty(db.LeaveRequests);
+    }
+
+    [Fact]
+    public void Create_OneDayLeaveRequest_SucceedsWithOneDay()
+    {
+        using var db = _database.NewDb();
+        var employee = new Employee { Name = "Test Employee", AnnualQuota = 20 };
+        db.Employees.Add(employee);
+        db.SaveChanges();
+        var controller = new LeaveRequestsController(db);
+
+        var result = controller.Create(new CreateLeaveRequestDto
+        {
+            EmployeeId = employee.Id,
+            Type = LeaveType.Sick,
+            StartDate = new DateTime(2026, 3, 1),
+            EndDate = new DateTime(2026, 3, 1)
+        });
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, Assert.Single(db.LeaveRequests).Days);
+    }
+
+    [Fact]
     public async Task Approve_PendingRequest_ApprovesSuccessfully()
     {
         using var db = _database.NewDb();

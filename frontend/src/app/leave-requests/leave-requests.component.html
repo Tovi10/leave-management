@@ -1,6 +1,6 @@
 <h2>Leave Requests</h2>
 
-<!-- TODO (candidate): add the "new request" form here, with validation. -->
+<app-leave-request-form [employees]="employees" (created)="load()"></app-leave-request-form>
 
 <div *ngIf="loading">Loading...</div>
 
@@ -27,7 +27,24 @@
       <td>{{ r.days }}</td>
       <td>{{ statusLabel(r.status) }}</td>
       <td>
-        <button *ngIf="r.status == 0" (click)="approve(r.id)">Approve</button>
+        <button
+          *ngIf="r.status === 0"
+          class="approve-button"
+          [disabled]="isApproving(r.id)"
+          [attr.aria-busy]="isApproving(r.id)"
+          (click)="approve(r.id)">
+          <span *ngIf="isApproving(r.id)" class="loading-indicator" aria-hidden="true"></span>
+          {{ isApproving(r.id) ? 'Approving...' : 'Approve' }}
+        </button>
+        <div
+          *ngIf="approvalFeedback.get(r.id) as feedback"
+          class="approval-feedback"
+          [class.success]="feedback.kind === 'success'"
+          [class.error]="feedback.kind === 'error'"
+          [attr.role]="feedback.kind === 'error' ? 'alert' : 'status'"
+          aria-live="polite">
+          {{ feedback.message }}
+        </div>
       </td>
     </tr>
   </tbody>

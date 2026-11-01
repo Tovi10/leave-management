@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using LeaveManagement.Api.Data;
 using LeaveManagement.Api.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -49,11 +50,37 @@ public class LeaveRequestsController : ControllerBase
     [HttpPost]
     public IActionResult Create([FromBody] CreateLeaveRequestDto dto)
     {
+        var validationResults = new List<ValidationResult>();
+        Validator.TryValidateObject(
+            dto,
+            new ValidationContext(dto),
+            validationResults,
+            validateAllProperties: true);
+
+        if (validationResults.Count > 0)
+        {
+            var errors = validationResults
+                .SelectMany(result => result.MemberNames.DefaultIfEmpty(string.Empty)
+                    .Select(member => new { member, result.ErrorMessage }))
+                .GroupBy(error => error.member)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(error => error.ErrorMessage ?? "Invalid value.").ToArray());
+            return BadRequest(new ValidationProblemDetails(errors));
+        }
+
         var employee = _db.Employees.FirstOrDefault(e => e.Id == dto.EmployeeId);
         if (employee == null)
             return NotFound("Employee not found");
 
-        var days = (dto.EndDate - dto.StartDate).Days + 1;
+        var days = (dto.EndDate!.Value - dto.StartDate!.Value).Days + 1;
+        if (days <= 0)
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                [nameof(dto.EndDate)] = ["Leave duration must be greater than zero days."]
+            }));
+        }
 
         // How many vacation days has the employee already used this year?
         var used = _db.LeaveRequests
@@ -71,9 +98,9 @@ public class LeaveRequestsController : ControllerBase
         var request = new LeaveRequest
         {
             EmployeeId = dto.EmployeeId,
-            Type = dto.Type,
-            StartDate = dto.StartDate,
-            EndDate = dto.EndDate,
+            Type = dto.Type!.Value,
+            StartDate = dto.StartDate.Value,
+            EndDate = dto.EndDate.Value,
             Days = days,
             Status = LeaveStatus.Pending
         };

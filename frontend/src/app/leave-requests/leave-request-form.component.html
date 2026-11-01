@@ -1,0 +1,50 @@
+<form [formGroup]="requestForm" (ngSubmit)="createRequest()" novalidate>
+  <h3>New leave request</h3>
+
+  <label for="employeeId">Employee</label>
+  <select id="employeeId" formControlName="employeeId">
+    <option [ngValue]="null">Select an employee</option>
+    <option *ngFor="let employee of employees" [ngValue]="employee.id">
+      {{ employee.name }}
+    </option>
+  </select>
+  <small class="validation-message" *ngIf="requestForm.controls.employeeId.invalid && (requestForm.controls.employeeId.touched || submitAttempted)" role="alert">
+    Please select an employee.
+  </small>
+
+  <label for="leaveType">Leave type</label>
+  <select id="leaveType" formControlName="type">
+    <option [ngValue]="null">Select a leave type</option>
+    <option [ngValue]="0">Vacation</option>
+    <option [ngValue]="1">Sick</option>
+    <option [ngValue]="2">Unpaid</option>
+  </select>
+  <small class="validation-message" *ngIf="requestForm.controls.type.invalid && (requestForm.controls.type.touched || submitAttempted)" role="alert">
+    Please select a leave type.
+  </small>
+
+  <label for="startDate">Start date</label>
+  <input id="startDate" type="date" formControlName="startDate">
+  <small class="validation-message" *ngIf="requestForm.controls.startDate.invalid && (requestForm.controls.startDate.touched || submitAttempted)" role="alert">
+    Please enter a start date.
+  </small>
+
+  <label for="endDate">End date</label>
+  <input id="endDate" type="date" formControlName="endDate">
+  <small class="validation-message" *ngIf="requestForm.controls.endDate.invalid && (requestForm.controls.endDate.touched || submitAttempted)" role="alert">
+    Please enter an end date.
+  </small>
+  <small class="validation-message" *ngIf="requestForm.errors?.['dateOrder'] && (requestForm.controls.endDate.touched || submitAttempted)" role="alert">
+    End date must be on or after the start date.
+  </small>
+  <small class="validation-message" *ngIf="requestForm.errors?.['invalidDate'] && submitAttempted" role="alert">
+    Please enter valid dates.
+  </small>
+
+  <p *ngIf="leaveDays !== null">Number of leave days: {{ leaveDays }}</p>
+  <small class="validation-message" *ngIf="requestForm.errors?.['positiveDays'] && submitAttempted" role="alert">
+    Leave duration must be greater than zero days.
+  </small>
+  <p class="validation-message" *ngIf="submitError" role="alert">{{ submitError }}</p>
+  <button type="submit">Submit request</button>
+</form>
