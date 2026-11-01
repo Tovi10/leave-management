@@ -1,7 +1,10 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse } from '@angular/common/http';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { finalize } from 'rxjs';
 import { Employee, LeaveRequest } from '../models/leave-request.model';
+import { LeaveRequestService } from '../services/leave-request.service';
 import { LeaveRequestFormComponent } from './leave-request-form.component';
 
 interface ApprovalFeedback {
@@ -17,30 +20,31 @@ interface ApprovalFeedback {
   styleUrls: ['./leave-requests.component.css']
 })
 export class LeaveRequestsComponent implements OnInit {
+  private readonly destroyRef = inject(DestroyRef);
+
   requests: LeaveRequest[] = [];
   employees: Employee[] = [];
   loading = false;
   readonly approvingRequestIds = new Set<number>();
   readonly approvalFeedback = new Map<number, ApprovalFeedback>();
 
-  private readonly apiUrl = 'http://localhost:5080/api/leave-requests';
-  private readonly employeesUrl = 'http://localhost:5080/api/employees';
-
-  constructor(private http: HttpClient) {}
+  constructor(private readonly leaveRequestService: LeaveRequestService) {}
 
   ngOnInit(): void {
     this.load();
-    this.http.get<Employee[]>(this.employeesUrl).subscribe((employees) => {
-      this.employees = employees;
-    });
+    this.leaveRequestService.getEmployees()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((employees) => this.employees = employees);
   }
 
   load(): void {
     this.loading = true;
-    this.http.get<LeaveRequest[]>(this.apiUrl).subscribe((data) => {
-      this.requests = data;
-      this.loading = false;
-    });
+    this.leaveRequestService.getLeaveRequests()
+      .pipe(
+        finalize(() => this.loading = false),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((requests) => this.requests = requests);
   }
 
   approve(id: number): void {
@@ -51,25 +55,28 @@ export class LeaveRequestsComponent implements OnInit {
     this.approvingRequestIds.add(id);
     this.approvalFeedback.delete(id);
 
-    this.http.post<LeaveRequest>(this.apiUrl + '/' + id + '/approve', {}).subscribe({
-      next: (approvedRequest) => {
-        this.requests = this.requests.map((request) =>
-          request.id === id ? { ...request, status: approvedRequest.status } : request
-        );
-        this.approvalFeedback.set(id, {
-          kind: 'success',
-          message: 'Leave request approved successfully.'
-        });
-        this.approvingRequestIds.delete(id);
-      },
-      error: (error: HttpErrorResponse) => {
-        this.approvalFeedback.set(id, {
-          kind: 'error',
-          message: this.getApprovalErrorMessage(error)
-        });
-        this.approvingRequestIds.delete(id);
-      }
-    });
+    this.leaveRequestService.approveLeaveRequest(id)
+      .pipe(
+        finalize(() => this.approvingRequestIds.delete(id)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe({
+        next: (approvedRequest) => {
+          this.requests = this.requests.map((request) =>
+            request.id === id ? { ...request, status: approvedRequest.status } : request
+          );
+          this.approvalFeedback.set(id, {
+            kind: 'success',
+            message: 'Leave request approved successfully.'
+          });
+        },
+        error: (error: HttpErrorResponse) => {
+          this.approvalFeedback.set(id, {
+            kind: 'error',
+            message: this.getApprovalErrorMessage(error)
+          });
+        }
+      });
   }
 
   private getApprovalErrorMessage(error: HttpErrorResponse): string {
@@ -104,7 +111,14 @@ export class LeaveRequestsComponent implements OnInit {
 
   private extractResponseMessage(body: unknown): string | null {
     if (typeof body === 'string') {
-      return body.trim() ? body : null;
+      try {
+        return this.extractResponseMessage(JSON.parse(body) as unknown) ?? (body.trim() ? body : null);
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) {
+          throw error;
+        }
+        return body.trim() ? body : null;
+      }
     }
 
     if (!body || typeof body !== 'object' || Array.isArray(body)) {

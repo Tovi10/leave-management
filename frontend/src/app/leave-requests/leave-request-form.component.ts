@@ -1,8 +1,11 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse } from '@angular/common/http';
+import { DestroyRef, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
-import { CreateLeaveRequest, Employee, LeaveRequest } from '../models/leave-request.model';
+import { CreateLeaveRequest, Employee } from '../models/leave-request.model';
+import { LeaveRequestService } from '../services/leave-request.service';
 
 function validateLeaveRange(control: AbstractControl): ValidationErrors | null {
   const startDate = control.get('startDate')?.value as string;
@@ -34,6 +37,8 @@ function validateLeaveRange(control: AbstractControl): ValidationErrors | null {
   styleUrls: ['./leave-request-form.component.css']
 })
 export class LeaveRequestFormComponent {
+  private readonly destroyRef = inject(DestroyRef);
+
   @Input() employees: Employee[] = [];
   @Output() created = new EventEmitter<void>();
 
@@ -47,9 +52,7 @@ export class LeaveRequestFormComponent {
     endDate: new FormControl('', { nonNullable: true, validators: Validators.required })
   }, { validators: validateLeaveRange });
 
-  private readonly apiUrl = 'http://localhost:5080/api/leave-requests';
-
-  constructor(private http: HttpClient) {}
+  constructor(private readonly leaveRequestService: LeaveRequestService) {}
 
   get leaveDays(): number | null {
     const { startDate, endDate } = this.requestForm.getRawValue();
@@ -82,24 +85,38 @@ export class LeaveRequestFormComponent {
       endDate: this.requestForm.controls.endDate.value
     };
 
-    this.http.post<LeaveRequest>(this.apiUrl, request).subscribe({
-      next: () => {
-        this.requestForm.reset();
-        this.submitAttempted = false;
-        this.created.emit();
-      },
-      error: (error: HttpErrorResponse) => {
-        const problem = error.error as {
-          errors?: Record<string, string[]>;
-          detail?: string;
-          title?: string;
-        };
-        const validationMessages = problem?.errors ? Object.values(problem.errors).flat() : [];
-        this.submitError = validationMessages[0]
-          ?? problem?.detail
-          ?? problem?.title
-          ?? 'Could not create the leave request. Please try again.';
-      }
-    });
+    this.leaveRequestService.createLeaveRequest(request)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.requestForm.reset();
+          this.submitAttempted = false;
+          this.created.emit();
+        },
+        error: (error: HttpErrorResponse) => {
+          const problem = this.getProblemDetails(error.error);
+          const validationMessages = problem?.['errors'];
+          const validationMessage = validationMessages && typeof validationMessages === 'object'
+            ? Object.values(validationMessages).flat().find(
+              (message): message is string => typeof message === 'string'
+            )
+            : undefined;
+          this.submitError = validationMessage
+            ?? this.getProblemMessage(problem, 'detail')
+            ?? this.getProblemMessage(problem, 'title')
+            ?? 'Could not create the leave request. Please try again.';
+        }
+      });
+  }
+
+  private getProblemDetails(body: unknown): Record<string, unknown> | null {
+    return body !== null && typeof body === 'object' && !Array.isArray(body)
+      ? body as Record<string, unknown>
+      : null;
+  }
+
+  private getProblemMessage(problem: Record<string, unknown> | null, key: string): string | undefined {
+    const value = problem?.[key];
+    return typeof value === 'string' ? value : undefined;
   }
 }

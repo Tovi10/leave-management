@@ -1,6 +1,3 @@
-// Intentionally thin. Part of the task is to introduce proper typing
-// across the frontend instead of the `any` usage in the component.
-
 export interface Employee {
   id: number;
   name: string;
