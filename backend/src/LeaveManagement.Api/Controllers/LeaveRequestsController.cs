@@ -83,4 +83,30 @@ public class LeaveRequestsController : ControllerBase
 
         return Ok(request);
     }
+
+    // POST /api/leave-requests/{id}/approve
+    [HttpPost("{id:int}/approve")]
+    public async Task<IActionResult> Approve(int id, CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await _db.Database.BeginTransactionAsync(cancellationToken);
+
+        var request = await _db.LeaveRequests
+            .FromSqlInterpolated(
+                $"SELECT * FROM \"LeaveRequests\" WHERE \"Id\" = {id} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (request is null)
+            return NotFound("Leave request not found");
+
+        if (request.Status != LeaveStatus.Pending)
+            return Conflict("Leave request is already approved or rejected");
+
+        request.Status = LeaveStatus.Approved;
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return Ok(request);
+    }
+
 }

@@ -27,7 +27,7 @@ public sealed class TestDatabase : IAsyncLifetime
         await _postgres.StartAsync();
     }
 
-    public LeaveDbContext NewDb()
+    public LeaveDbContext NewDb(string? databaseName = null)
     {
         var options = new DbContextOptionsBuilder<LeaveDbContext>();
 
@@ -40,16 +40,17 @@ public sealed class TestDatabase : IAsyncLifetime
         }
         else
         {
-            var databaseName = $"leave_test_{Guid.NewGuid():N}";
-
-            var adminBuilder =
-                new NpgsqlConnectionStringBuilder(_postgres!.GetConnectionString())
-                {
-                    Database = "postgres"
-                };
-
-            using (var connection = new NpgsqlConnection(adminBuilder.ConnectionString))
+            if (databaseName is null)
             {
+                databaseName = $"leave_test_{Guid.NewGuid():N}";
+
+                var adminBuilder =
+                    new NpgsqlConnectionStringBuilder(_postgres!.GetConnectionString())
+                    {
+                        Database = "postgres"
+                    };
+
+                using var connection = new NpgsqlConnection(adminBuilder.ConnectionString);
                 connection.Open();
 
                 using var command = new NpgsqlCommand(
@@ -57,12 +58,11 @@ public sealed class TestDatabase : IAsyncLifetime
                     connection);
 
                 command.ExecuteNonQuery();
+                _databaseNames.Add(databaseName);
             }
 
-            _databaseNames.Add(databaseName);
-
             var testBuilder =
-                new NpgsqlConnectionStringBuilder(_postgres.GetConnectionString())
+                new NpgsqlConnectionStringBuilder(_postgres!.GetConnectionString())
                 {
                     Database = databaseName
                 };
