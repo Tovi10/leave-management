@@ -1,4 +1,4 @@
-using LeaveManagement.Api.Data;
+using LeaveManagement.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LeaveManagement.Api.Controllers;
@@ -8,17 +8,17 @@ namespace LeaveManagement.Api.Controllers;
 [Route("api/employees")]
 public class EmployeesController : ControllerBase
 {
-    private readonly LeaveDbContext _db;
+    private readonly LeaveManagementService _service;
 
-    public EmployeesController(LeaveDbContext db)
+    public EmployeesController(LeaveManagementService service)
     {
-        _db = db;
+        _service = service;
     }
 
     // GET /api/employees
     [HttpGet]
     public IActionResult GetAll()
     {
-        return Ok(_db.Employees.ToList());
+        return Ok(_service.GetEmployees());
     }
 }
